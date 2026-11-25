@@ -40,7 +40,7 @@ nav button.on{color:var(--ac)}
 video{width:100%;border-radius:10px;background:#000;max-height:45vh}
 .qr{width:100%;max-width:300px;display:block;margin:8px auto;border-radius:8px;background:#fff}
 .rc{background:#fff;color:#222;font:13px ui-monospace,Menlo,Consolas,monospace;padding:16px 14px;border-radius:8px;margin-bottom:10px}
-.rc h2{font:700 24px system-ui,sans-serif;letter-spacing:1px;text-align:center;margin:0 0 6px}
+.rc h2{font:500 22px system-ui,sans-serif;letter-spacing:2px;text-align:center;margin:0 0 6px}
 .rc .ctr{text-align:center;margin-bottom:6px}
 .ln{display:flex;justify-content:space-between;gap:8px}
 .dash{border-top:1px dashed #888;margin:8px 0}
@@ -72,7 +72,7 @@ const S={
   set(k,v){mem[k]=v;try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
 };
 let items=S.get('items',[]),sales=S.get('sales',[]),qrs=S.get('qrs',[]);
-let cfg=Object.assign({name:'',addr:'',tel:''},S.get('cfg',{}));cfg.w=101;
+let cfg=Object.assign({name:'',addr:'',tel:'',w:58,rq:0},S.get('cfg',{}));if(!cfg.v2){cfg.w=58;cfg.v2=1}
 let cart={},tab='sale',delId=null,discV=0,discT='Rs',payM='Cash',payBank=0,cashRcv=0,cur=null,btChar=null;
 const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -163,17 +163,17 @@ function charge(){
 function rhtml(s){
   const ch=s.cash>s.total?s.cash-s.total:0,d=new Date(s.date);
   const L=(a,b)=>`<div class="ln"><span>${a}</span><span>${b}</span></div>`;
-  let h=`<div class="rc"><h2>RECEIPT</h2>${cfg.name?`<div class="ctr"><b>${esc(cfg.name)}</b></div>`:''}`;
-  if(cfg.addr)h+=L('ADDRESS:',esc(cfg.addr));
-  if(cfg.tel)h+=L('TEL:',esc(cfg.tel));
-  h+=L('DATE:',d.toLocaleString('en-GB'))+L('INVOICE:','#'+s.id)+'<div class="dash"></div>';
+  let h=`<div class="rc"><h2>RECEIPT</h2>${cfg.name?`<div class="ctr hd" style="font-size:14px;margin:0">${esc(cfg.name).toUpperCase()}</div>`:''}${cfg.addr?`<div class="ctr" style="font-size:11.5px;margin:0">${esc(cfg.addr)}</div>`:''}${cfg.tel?`<div class="ctr" style="font-size:11.5px">Tel: ${esc(cfg.tel)}</div>`:''}<div class="dash"></div>`;
+  h+=L('DATE:',d.toLocaleString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}))+L('INVOICE:','#'+s.id)+'<div class="dash"></div>';
   h+='<div class="it hd"><span>QTY</span><span>DESC</span><span>PRICE</span></div>';
   h+=s.lines.map(l=>`<div class="it"><span>${l.qty}</span><span>${esc(l.name)}</span><span>${Math.round(l.qty*l.price)}</span></div>`).join('');
   h+='<div class="dash"></div>';
   if(s.disc>0)h+=L('SUBTOTAL',rs(s.sub))+L('DISCOUNT','-'+rs(s.disc));
-  h+=`<div class="ln hd"><span>TOTAL AMOUNT</span><span>${rs(s.total)}</span></div>`;
+  h+=`<div class="ln hd" style="font-size:15px"><span>TOTAL AMOUNT</span><span>${rs(s.total)}</span></div>`;
   if((s.pay||'Cash')==='Cash'){if(s.cash>0)h+=L('CASH',rs(s.cash))+L('CHANGE',rs(ch))}
   else h+=L('PAID BY',esc(s.pay));
+  const rq=qrs.find(x=>x.id===cfg.rq);
+  if(rq)h+=`<div class="dash"></div><div class="ctr hd">SCAN TO PAY</div><img src="${rq.img}" style="width:55%;display:block;margin:6px auto">`;
   h+='<div class="dash"></div><div class="ctr hd">THANK YOU FOR SHOPPING!</div></div>';
   return h;
 }
@@ -186,24 +186,42 @@ async function shareR(){
 }
 function doPrint(s){
   if(!s)return;
-  const p=$('#prt');p.innerHTML=rhtml(s);p.style.width='4in';
+  const p=$('#prt');p.innerHTML=rhtml(s);p.style.width=(cfg.w==101?'4in':cfg.w+'mm');
   try{window.print()}catch(e){msg('Is page par print block hai. Apni GitHub website se try karein.')}
 }
-function escpos(s){
-  const W=64,e=[];
+function escpos(s,img){
+  const W=cfg.w==101?64:cfg.w==80?48:32,e=[];
   const tx=t=>e.push(...new TextEncoder().encode(t));
   const ln=(a,b)=>{a=String(a);b=String(b);tx(a.slice(0,Math.max(1,W-b.length-1)).padEnd(W-b.length)+b+'\n')};
   const dash=()=>tx('-'.repeat(W)+'\n');
-  e.push(0x1b,0x40,0x1b,0x61,1,0x1b,0x45,1);tx('RECEIPT\n');e.push(0x1b,0x45,0);
-  tx((cfg.name?cfg.name+'\n':'')+(cfg.addr?cfg.addr+'\n':'')+(cfg.tel?'Tel '+cfg.tel+'\n':''));e.push(0x1b,0x61,0);
-  ln('Invoice','#'+s.id);ln('Date',new Date(s.date).toLocaleString('en-GB'));dash();
-  s.lines.forEach(l=>ln(l.qty+' x '+l.name,Math.round(l.qty*l.price)));dash();
-  if(s.disc>0){ln('Subtotal',Math.round(s.sub));ln('Discount','-'+Math.round(s.disc))}
-  e.push(0x1b,0x45,1);ln('TOTAL',Math.round(s.total));e.push(0x1b,0x45,0);
-  if((s.pay||'Cash')==='Cash'){if(s.cash>0){ln('Cash',Math.round(s.cash));ln('Change',Math.round(Math.max(0,s.cash-s.total)))}}else ln('Paid by',s.pay);
-  dash();e.push(0x1b,0x61,1);tx('THANK YOU FOR SHOPPING!\n');e.push(0x0a,0x0a,0x0a,0x0a);
+  e.push(0x1b,0x40,0x1b,0x61,1,0x1b,0x45,1,0x1d,0x21,0x11);tx('RECEIPT\n');e.push(0x1d,0x21,0);
+  if(cfg.name)tx(cfg.name.toUpperCase()+'\n');e.push(0x1b,0x45,0);
+  tx((cfg.addr?cfg.addr+'\n':'')+(cfg.tel?'Tel: '+cfg.tel+'\n':''));e.push(0x1b,0x61,0);
+  dash();ln('DATE:',new Date(s.date).toLocaleString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}));ln('INVOICE:','#'+s.id);dash();
+  const pr=n=>String(Math.round(n));
+  e.push(0x1b,0x45,1);ln('QTY  DESC','PRICE');e.push(0x1b,0x45,0);
+  s.lines.forEach(l=>ln(String(l.qty).padEnd(5)+l.name,pr(l.qty*l.price)));dash();
+  if(s.disc>0){ln('SUBTOTAL',pr(s.sub));ln('DISCOUNT','-'+pr(s.disc))}
+  e.push(0x1b,0x45,1);ln('TOTAL AMOUNT','Rs '+pr(s.total));e.push(0x1b,0x45,0);
+  dash();
+  if((s.pay||'Cash')==='Cash'){if(s.cash>0){ln('CASH','Rs '+pr(s.cash));ln('CHANGE','Rs '+pr(Math.max(0,s.cash-s.total)));dash()}}else{ln('PAID BY',s.pay);dash()}
+  e.push(0x1b,0x61,1);if(img){e.push(0x1b,0x45,1);tx('SCAN TO PAY\n');e.push(0x1b,0x45,0);e.push(...img);tx('\n');dash()}e.push(0x1b,0x45,1);tx('THANK YOU FOR SHOPPING!\n');e.push(0x1b,0x45,0);e.push(0x0a,0x0a,0x0a,0x0a);
   return new Uint8Array(e);
 }
+function qrRaster(){return new Promise(r=>{
+  const q=qrs.find(x=>x.id===cfg.rq);if(!q)return r(null);
+  const im=new Image();
+  im.onload=()=>{
+    const N=256,c=document.createElement('canvas');c.width=c.height=N;
+    const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,N,N);
+    const k=Math.min(N/im.width,N/im.height),w=im.width*k,h=im.height*k;
+    x.drawImage(im,(N-w)/2,(N-h)/2,w,h);
+    const d=x.getImageData(0,0,N,N).data,bw=N/8,out=[0x1d,0x76,0x30,0,bw&255,bw>>8,N&255,N>>8];
+    for(let y=0;y<N;y++)for(let b=0;b<bw;b++){let v=0;for(let j=0;j<8;j++){const p=(y*N+b*8+j)*4;v=(v<<1)|((d[p]*0.3+d[p+1]*0.6+d[p+2]*0.1)<128?1:0)}out.push(v)}
+    r(out);
+  };
+  im.onerror=()=>r(null);im.src=q.img;
+})}
 async function btPrint(s){
   if(!s)return;
   try{
@@ -218,7 +236,7 @@ async function btPrint(s){
       }
       if(!btChar)throw new Error('Printer ka write channel nahi mila');
     }
-    const data=escpos(s);
+    const data=escpos(s,await qrRaster());
     for(let i=0;i<data.length;i+=100){
       const part=data.slice(i,i+100);
       if(btChar.properties.writeWithoutResponse)await btChar.writeValueWithoutResponse(part);else await btChar.writeValue(part);
@@ -281,7 +299,7 @@ function vReport(){
 }
 function vSet(){
   const f=(k,p)=>`<input placeholder="${p}" value="${esc(cfg[k])}" oninput="cfg.${k}=this.value;S.set('cfg',cfg)">`;
-  return `<div class="card"><h3 style="margin:0 0 8px">Shop details (receipt par)</h3>${f('name','Shop name')}${f('addr','Address')}${f('tel','Phone')}<small style="color:var(--mu)">Receipt size: 4 inch</small></div>
+  return `<div class="card"><h3 style="margin:0 0 8px">Shop details (receipt par)</h3>${f('name','Shop name')}${f('addr','Address')}${f('tel','Phone')}<select onchange="cfg.w=+this.value;S.set('cfg',cfg)"><option value="58" ${cfg.w==58?'selected':''}>Paper 58mm</option><option value="80" ${cfg.w==80?'selected':''}>Paper 80mm</option><option value="101" ${cfg.w==101?'selected':''}>Paper 4 inch</option></select><select onchange="cfg.rq=+this.value;S.set('cfg',cfg)"><option value="0">Receipt par QR: nahi</option>${qrs.map(q=>`<option value="${q.id}" ${cfg.rq==q.id?'selected':''}>Receipt par QR: ${esc(q.bank)}</option>`).join('')}</select></div>
   <div class="card"><h3 style="margin:0 0 8px">Bank QR (scan to pay)</h3><input id="qn" placeholder="Bank ka naam (jaise HBL, Easypaisa)"><input id="qf" type="file" accept="image/*" hidden onchange="addQR(this)"><button style="width:100%" onclick="$('#qf').click()">Upload QR image</button><small id="qh" style="display:block;color:var(--mu);margin-top:6px"></small>
   ${qrs.map(q=>`<div class="row" style="margin-top:8px"><div style="display:flex;gap:10px;align-items:center"><img src="${q.img}" style="width:48px;height:48px;border-radius:6px"><b>${esc(q.bank)}</b></div><button class="g" onclick="qrs=qrs.filter(x=>x.id!==${q.id});S.set('qrs',qrs);render()">Delete</button></div>`).join('')}</div>`;
 }
