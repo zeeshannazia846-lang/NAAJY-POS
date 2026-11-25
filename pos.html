@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>My POS</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0f766e">
+<link rel="apple-touch-icon" href="icon-192.png">
 <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
 <style>
 :root{--bg:#f6f7f8;--card:#fff;--tx:#1b1f23;--mu:#6b7280;--ac:#0f766e;--acx:#fff;--bd:#e5e7eb;--warn:#d97706;color-scheme:light dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -56,7 +59,7 @@ video{width:100%;border-radius:10px;background:#000;max-height:45vh}
 <div id="bar"></div>
 <nav id="nav"></nav>
 
-<div id="scan" class="ov"><div class="box"><video id="vid" playsinline muted></video><p id="smsg" style="color:var(--mu);margin:8px 0"></p><input id="mcode" placeholder="Ya code yahan type karein" onkeydown="if(event.key==='Enter'){scanCb&&scanCb(this.value);this.value=''}"><div class="acts"><button class="g" onclick="closeScan()">Done</button></div></div></div>
+<div id="scan" class="ov"><div class="box"><video id="vid" playsinline muted></video><button id="tbtn" disabled style="width:100%;padding:16px;font-size:18px;margin-top:8px" onclick="toggleTorch()">🔦 Flash light</button><p id="smsg" style="color:var(--mu);margin:8px 0"></p><input id="mcode" placeholder="Ya code yahan type karein" onkeydown="if(event.key==='Enter'){scanCb&&scanCb(this.value);this.value=''}"><div class="acts"><button class="g" onclick="closeScan()">Done</button></div></div></div>
 
 <div id="co" class="ov"><div class="box" id="cob"></div></div>
 
@@ -109,7 +112,7 @@ async function openScan(cb){
   try{
     if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw new Error('nocam');
     stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
-    const v=$('#vid');v.srcObject=stream;await v.play();
+    const v=$('#vid');v.srcObject=stream;await v.play();setupTorch();
     const nat='BarcodeDetector' in window;const det=nat?new BarcodeDetector():new ZXing.BrowserMultiFormatReader();scanOn=true;toast('Barcode camera ke samne rakhein');
     const loop=async()=>{
       if(!scanOn)return;
@@ -121,7 +124,23 @@ async function openScan(cb){
     toast(e.name==='NotAllowedError'||e.name==='SecurityError'?'Camera permission block hai. Is link ko seedha Chrome mein kholein aur Allow dabayein. Tab tak code neeche type karein.':'Camera nahi khula ('+(e.name||'error')+'). Code neeche type karein.');
   }
 }
-function closeScan(){scanOn=false;lastCode='';if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;$('#scan').style.display='none'}
+let torchOn=false;
+const torchTrack=()=>stream&&stream.getVideoTracks()[0];
+function setupTorch(){
+  const b=$('#tbtn'),t=torchTrack();torchOn=false;
+  let ok=false;try{ok=!!(t&&t.getCapabilities&&t.getCapabilities().torch)}catch(e){}
+  b.disabled=!ok;b.style.opacity=ok?1:.5;
+  b.textContent=ok?'🔦 Flash light ON karein':'Is phone mein flash light available nahi';
+}
+async function toggleTorch(){
+  const t=torchTrack();if(!t)return;
+  try{
+    await t.applyConstraints({advanced:[{torch:!torchOn}]});
+    torchOn=!torchOn;
+    $('#tbtn').textContent=torchOn?'🔦 Flash light OFF karein':'🔦 Flash light ON karein';
+  }catch(e){toast('Flash light nahi chali')}
+}
+function closeScan(){torchOn=false;scanOn=false;lastCode='';if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;$('#scan').style.display='none'}
 function scanAdd(code){
   code=String(code).trim();if(!code)return false;
   const i=items.find(x=>x.barcode===code);
@@ -312,6 +331,7 @@ function render(){
   $('#nav').innerHTML=[['sale','🛒','Sale'],['items','📦','Items'],['report','📊','Report'],['set','⚙️','Settings']].map(([k,e,l])=>`<button class="${tab===k?'on':''}" onclick="tab='${k}';delId=null;render()">${e}<br>${l}</button>`).join('');
 }
 render();
+try{if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{})}catch(e){}
 </script>
 </body>
 </html>
