@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>My POS</title>
+<style>
+:root{--bg:#f6f7f8;--card:#fff;--tx:#1b1f23;--mu:#6b7280;--ac:#0f766e;--acx:#fff;--bd:#e5e7eb;--warn:#d97706;color-scheme:light dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#111416;--card:#1b1f23;--tx:#eceff1;--mu:#9aa3ab;--ac:#2dd4bf;--acx:#06201c;--bd:#2c3238;--warn:#fbbf24}}
+:root[data-theme="dark"]{--bg:#111416;--card:#1b1f23;--tx:#eceff1;--mu:#9aa3ab;--ac:#2dd4bf;--acx:#06201c;--bd:#2c3238;--warn:#fbbf24}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding-bottom:240px}
+h1{font-size:20px;margin:0;padding:14px 16px}
+main{padding:0 12px}
+.row{display:flex;justify-content:space-between;align-items:center;background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px 14px;margin-bottom:8px}
+.row small{display:block;color:var(--mu);margin-top:2px}
+.row.off{opacity:.45}
+.qty{display:flex;align-items:center;gap:10px;font-size:18px}
+button{font:inherit;border:0;border-radius:10px;padding:10px 14px;background:var(--ac);color:var(--acx);font-weight:600}
+button.g{background:transparent;color:var(--tx);border:1px solid var(--bd)}
+.qty button{padding:4px 12px;font-size:20px}
+input{font:inherit;width:100%;padding:11px;border-radius:10px;border:1px solid var(--bd);background:var(--card);color:var(--tx);margin-bottom:8px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;margin-bottom:10px}
+.big{font-size:26px;font-weight:700}
+.empty{text-align:center;color:var(--mu);padding:40px 10px}
+.low{color:var(--warn)}
+h3{margin:16px 4px 8px;font-size:15px;color:var(--mu)}
+select{font:inherit;padding:11px;border-radius:10px;border:1px solid var(--bd);background:var(--card);color:var(--tx)}
+#bar{background:var(--bg);position:fixed;left:0;right:0;bottom:calc(60px + env(safe-area-inset-bottom,0px));padding:8px 12px}
+#bar button{width:100%;padding:15px;font-size:18px}
+#bar button:disabled{opacity:.4}
+nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--card);border-top:1px solid var(--bd);padding-bottom:env(safe-area-inset-bottom,0px)}
+nav button{flex:1;background:none;color:var(--mu);border-radius:0;padding:12px 4px;font-size:13px}
+nav button.on{color:var(--ac)}
+#modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:16px}
+#modal .box{background:var(--card);border-radius:14px;padding:16px;width:100%;max-width:380px}
+pre{font:14px ui-monospace,Menlo,monospace;white-space:pre-wrap;margin:0 0 12px}
+.acts{display:flex;gap:8px}.acts button{flex:1}
+#scan{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;padding:16px;z-index:5}
+#scan .box{background:var(--card);border-radius:14px;padding:14px;width:100%;max-width:380px}
+video{width:100%;border-radius:10px;background:#000;max-height:45vh}
+</style>
+</head>
+<body>
+<h1 id="title"></h1>
+<main id="view"></main>
+<div id="bar"></div>
+<nav id="nav"></nav>
+<div id="scan"><div class="box"><video id="vid" playsinline muted></video><p id="smsg" style="color:var(--mu);margin:8px 0"></p><input id="mcode" placeholder="Ya code yahan type karein" onkeydown="if(event.key==='Enter'){scanCb&&scanCb(this.value);this.value=''}"><div class="acts"><button class="g" onclick="closeScan()">Done</button></div></div></div>
+<div id="modal"><div class="box"><pre id="rtxt"></pre><div class="acts"><button id="shr">Share</button><button class="g" onclick="closeM()">Close</button></div></div></div>
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
+<script>
+let mem={};
+const S={
+  get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return k in mem?mem[k]:d}},
+  set(k,v){mem[k]=v;try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+};
+let items=S.get('items',[]),sales=S.get('sales',[]),cart={},tab='sale',delId=null;
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const rs=n=>'Rs '+Math.round(n).toLocaleString();
+const save=()=>{S.set('items',items);S.set('sales',sales)};
+const find=id=>items.find(i=>i.id==id);
+const total=()=>Object.entries(cart).reduce((s,[id,q])=>s+find(id).price*q,0);
+let discV=0,discT='Rs';
+const discAmt=()=>Math.min(total(),discT==='%'?total()*discV/100:discV);
+const net=()=>total()-discAmt();
+function updBar(){
+  const b=$('#cb'),d=$('#dl');
+  if(b){b.textContent='Charge '+rs(net());b.disabled=!Object.keys(cart).length}
+  if(d)d.textContent=discAmt()>0?'Subtotal '+rs(total())+'  −  Discount '+rs(discAmt()):'';
+}
+
+function add(id){const i=find(id),q=cart[id]||0;if(q>=i.stock)return;cart[id]=q+1;render()}
+function sub(id){if(--cart[id]<=0)delete cart[id];render()}
+
+function charge(){
+  const lines=Object.entries(cart).map(([id,q])=>{const i=find(id);i.stock-=q;return{name:i.name,qty:q,price:i.price,cost:i.cost||0}});
+  const sub=lines.reduce((a,l)=>a+l.qty*l.price,0),d=discAmt();
+  const s={id:(sales.length?sales[sales.length-1].id:0)+1,date:Date.now(),sub,disc:d,total:sub-d,lines};
+  sales.push(s);cart={};discV=0;save();render();showR(s);
+}
+function rtext(s){
+  return ['MY SHOP','#'+s.id+'  '+new Date(s.date).toLocaleString(),'--------------------------',
+  ...s.lines.map(l=>l.name+'\n   '+l.qty+' x '+l.price+' = '+l.qty*l.price),
+  '--------------------------',...(s.disc>0?['Subtotal: '+rs(s.sub),'Discount: -'+rs(s.disc)]:[]),'TOTAL: '+rs(s.total),'Shukriya!'].join('\n');
+}
+function showR(s){
+  const t=rtext(s);$('#rtxt').textContent=t;$('#modal').style.display='flex';
+  $('#shr').onclick=async()=>{
+    try{if(navigator.share)await navigator.share({text:t});else{await navigator.clipboard.writeText(t);$('#shr').textContent='Copied'}}catch(e){}
+  };
+  $('#shr').textContent='Share';
+}
+function closeM(){$('#modal').style.display='none'}
+
+let stream=null,scanOn=false,scanCb=null,lastCode='',lastT=0;
+function toast(m){const a=$('#smsg'),b=$('#hint');if(a)a.textContent=m;if(b)b.textContent=m}
+async function openScan(cb){
+  scanCb=cb;$('#scan').style.display='flex';toast('Camera khul raha hai…');
+  try{
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw new Error('nocam');
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+    const v=$('#vid');v.srcObject=stream;await v.play();
+    const nat='BarcodeDetector' in window;const det=nat?new BarcodeDetector():new ZXing.BrowserMultiFormatReader();scanOn=true;toast('Barcode camera ke samne rakhein');
+    const loop=async()=>{
+      if(!scanOn)return;
+      try{let c='';if(nat){const r=await det.detect(v);if(r.length)c=r[0].rawValue}else{try{c=det.decode(v).getText()}catch(z){}}if(c){if(c!==lastCode||Date.now()-lastT>2500){lastCode=c;lastT=Date.now();scanCb(c)}}}catch(e){}
+      setTimeout(loop,250);
+    };
+    loop();
+  }catch(e){
+    toast(e.name==='NotAllowedError'||e.name==='SecurityError'?'Camera permission block hai. Is link ko seedha Chrome mein kholein aur Allow dabayein. Tab tak code neeche type karein.':'Camera nahi khula ('+(e.name||'error')+'). Code neeche type karein.');
+  }
+}
+function closeScan(){scanOn=false;lastCode='';if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;$('#scan').style.display='none'}
+function scanAdd(code){
+  code=String(code).trim();if(!code)return false;
+  const i=items.find(x=>x.barcode===code);
+  if(!i){toast('Item nahi mila: '+code);return false}
+  if((cart[i.id]||0)>=i.stock){toast(i.name+': stock khatam');return false}
+  add(i.id);toast('Added: '+i.name);
+  try{if(navigator.vibrate)navigator.vibrate(60)}catch(e){}
+  return true;
+}
+const scanBar=`<div style="display:flex;gap:8px"><input id="bc" placeholder="Scan / type barcode" inputmode="numeric" onkeydown="if(event.key==='Enter'){if(scanAdd(this.value))setTimeout(()=>$('#bc')&&$('#bc').focus(),0)}"><button style="margin-bottom:8px;white-space:nowrap" onclick="openScan(scanAdd)">📷 Scan</button></div><small id="hint" style="display:block;color:var(--mu);margin:-2px 4px 8px"></small>`;
+
+function addItem(){
+  const n=$('#n').value.trim();if(!n)return;
+  const bc=$('#b').value.trim();
+  if(bc&&items.some(i=>i.barcode===bc)){alert('Ye barcode pehle se kisi item ka hai');return}
+  const id=items.reduce((m,i)=>Math.max(m,i.id),0)+1;
+  items.push({id,name:n,barcode:bc,cost:parseFloat($('#c').value)||0,price:parseFloat($('#p').value)||0,stock:parseInt($('#s').value)||0});
+  items.sort((a,b)=>a.name.localeCompare(b.name));save();render();
+}
+function restock(id){find(id).stock+=10;save();render()}
+function del(id){
+  if(delId!==id){delId=id;render();return}
+  items=items.filter(i=>i.id!==id);delete cart[id];delId=null;save();render();
+}
+
+function vSale(){
+  if(!items.length)return '<p class="empty">Pehle Items tab mein item add karein.</p>';
+  return items.map(i=>{const q=cart[i.id]||0;
+    return `<div class="row ${i.stock<1?'off':''}" onclick="add(${i.id})"><div><b>${esc(i.name)}</b><small>${rs(i.price)} · Stock ${i.stock}</small></div>${q?`<div class="qty"><button onclick="event.stopPropagation();sub(${i.id})">−</button><b>${q}</b></div>`:''}</div>`}).join('');
+}
+function vItems(){
+  const form=`<div class="card"><input id="n" placeholder="Item name"><div style="display:flex;gap:8px"><input id="b" placeholder="Barcode (optional)" inputmode="numeric"><button class="g" style="margin-bottom:8px" onclick="openScan(c=>{$('#b').value=c;closeScan()})">📷</button></div><input id="c" type="number" inputmode="decimal" placeholder="Purchase price (kharid)"><div class="grid"><input id="p" type="number" inputmode="decimal" placeholder="Sale price"><input id="s" type="number" inputmode="numeric" placeholder="Stock"></div><button style="width:100%" onclick="addItem()">Add item</button></div>`;
+  return form+items.map(i=>`<div class="row"><div><b>${esc(i.name)}</b><small>Sale ${rs(i.price)} · Kharid ${rs(i.cost||0)}${i.barcode?' · '+esc(i.barcode):''} · Stock <span class="${i.stock<=5?'low':''}">${i.stock}${i.stock<=5?' ⚠':''}</span></small></div><div class="acts"><button class="g" onclick="restock(${i.id})">+10</button><button class="g" onclick="del(${i.id})">${delId===i.id?'Sure?':'Delete'}</button></div></div>`).join('');
+}
+function vReport(){
+  const today=new Date().toDateString();
+  const ts=sales.filter(s=>new Date(s.date).toDateString()===today);
+  const sum=ts.reduce((a,s)=>a+s.total,0);
+  const prof=ts.reduce((a,s)=>a+s.total-s.lines.reduce((b,l)=>b+l.qty*(l.cost||0),0),0);
+  const top={};ts.forEach(s=>s.lines.forEach(l=>top[l.name]=(top[l.name]||0)+l.qty));
+  const tl=Object.entries(top).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const low=items.filter(i=>i.stock<=5);
+  return `<div class="grid"><div class="card"><small>Today’s sales</small><div class="big">${rs(sum)}</div></div><div class="card"><small>Orders</small><div class="big">${ts.length}</div></div></div><div class="card"><small>Profit (munafa)</small><div class="big">${rs(prof)}</div></div>
+  <h3>TOP ITEMS TODAY</h3>${tl.length?tl.map(([n,q])=>`<div class="row"><b>${esc(n)}</b><span>${q} sold</span></div>`).join(''):'<p class="empty">Aaj koi sale nahi.</p>'}
+  <h3>LOW STOCK</h3>${low.length?low.map(i=>`<div class="row"><b>${esc(i.name)}</b><span class="low">${i.stock} left</span></div>`).join(''):'<p class="empty">Sab theek hai.</p>'}
+  <h3>TODAY’S RECEIPTS</h3>${ts.slice().reverse().map(s=>`<div class="row" onclick="showR(sales.find(x=>x.id==${s.id}))"><div><b>#${s.id}</b><small>${new Date(s.date).toLocaleTimeString()}</small></div><b>${rs(s.total)}</b></div>`).join('')}`;
+}
+function render(){
+  $('#title').textContent={sale:'Sale',items:'Items',report:'Daily report'}[tab];
+  $('#view').innerHTML=(tab==='sale'&&items.length?scanBar:'')+{sale:vSale,items:vItems,report:vReport}[tab]();
+  const t=total();
+  $('#bar').innerHTML=tab==='sale'?`<div style="display:flex;gap:8px;margin-bottom:6px"><input id="dv" type="number" inputmode="decimal" placeholder="Discount (jitna chahein)" value="${discV||''}" oninput="discV=parseFloat(this.value)||0;updBar()" style="margin:0"><select onchange="discT=this.value;updBar()"><option ${discT==='Rs'?'selected':''}>Rs</option><option ${discT==='%'?'selected':''}>%</option></select></div><small id="dl" style="display:block;color:var(--mu);margin-bottom:6px"></small><button id="cb" ${t?'':'disabled'} onclick="charge()">Charge ${rs(net())}</button>`:'';
+  updBar();
+  $('#nav').innerHTML=[['sale','🛒','Sale'],['items','📦','Items'],['report','📊','Report']].map(([k,e,l])=>`<button class="${tab===k?'on':''}" onclick="tab='${k}';delId=null;render()">${e}<br>${l}</button>`).join('');
+}
+render();
+</script>
+</body>
+</html>
