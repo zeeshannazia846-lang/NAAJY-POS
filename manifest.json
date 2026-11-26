@@ -1,6 +1,6 @@
 {
-  "name": "My POS",
-  "short_name": "POS",
+  "name": "Al-Amin POS",
+  "short_name": "Al-Amin",
   "start_url": "./pos.html",
   "scope": "./",
   "display": "standalone",
