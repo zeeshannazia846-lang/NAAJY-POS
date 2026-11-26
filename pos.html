@@ -63,12 +63,12 @@ video{width:100%;border-radius:10px;background:#000;max-height:45vh}
 
 <div id="scan" class="ov"><div class="box"><video id="vid" playsinline muted></video><button id="tbtn" disabled style="width:100%;padding:16px;font-size:18px;margin-top:8px" onclick="toggleTorch()">🔦 Flash light</button><p id="smsg" style="color:var(--mu);margin:8px 0"></p><input id="mcode" placeholder="Ya code yahan type karein" onkeydown="if(event.key==='Enter'){scanCb&&scanCb(this.value);this.value=''}"><div class="acts"><button class="g" onclick="closeScan()">Done</button></div></div></div>
 
+<div id="pn" class="ov"><div class="box" id="pinb"></div></div>
 <div id="ed" class="ov"><div class="box" id="edb"></div></div>
 <div id="co" class="ov"><div class="box" id="cob"></div></div>
 
-<div id="modal" class="ov"><div class="box"><div id="rcv"></div>
-<div class="acts"><button onclick="doPrint(cur)">🖨 Print</button><button onclick="btPrint(cur)">Bluetooth print</button><button class="g" onclick="shareR()">Share</button><button class="g" onclick="closeM()">Close</button></div>
-<small id="mh" style="display:block;color:var(--mu);margin-top:8px"></small></div></div>
+<div id="modal" class="ov"><div class="box"><input id="wph" type="tel" inputmode="tel" placeholder="Customer WhatsApp number (03xx...)" style="margin-bottom:8px"><div class="acts"><button onclick="sendWA(cur)">WhatsApp bhejein</button><button onclick="doPrint(cur)">🖨 Print</button><button onclick="btPrint(cur)">Bluetooth print</button><button class="g" onclick="shareR()">Image share</button><button class="g" id="rfbtn" onclick="openRf()">Refund</button><button class="g" onclick="closeM()">Close</button></div><small id="mh" style="display:block;color:var(--mu);margin:8px 0"></small><div id="rcv"></div></div></div>
+<div id="rf" class="ov"><div class="box" id="rfb"></div></div>
 <div id="prt"></div>
 
 <script>
@@ -81,7 +81,7 @@ const S={
 let items=S.get('items',[]),sales=S.get('sales',[]),qrs=S.get('qrs',[]);
 let cfg=Object.assign({name:'',addr:'',tel:'',w:58,rq:0},S.get('cfg',{}));cfg.w=58;cfg.v2=1;
 cfg.addr=cfg.addr||'Mohallah Manzoor Chowk, Chunian, District Kasur';cfg.tel=cfg.tel||'03044260261';cfg.tel2=cfg.tel2||'03049133811';cfg.wa=cfg.wa||'923044260261';
-let cart={},tab='sale',delId=null,discV=0,discT='Rs',payM='Cash',payBank=0,cashRcv=0,cur=null,btChar=null,custName='';
+let cart={},tab='sale',delId=null,discV=0,discT='Rs',payM='Cash',payBank=0,cashRcv=0,cur=null,btChar=null,custName='',custPhone='',owner=!cfg.pin;
 const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const rs=n=>'Rs '+Math.round(n).toLocaleString();
@@ -158,10 +158,10 @@ function scanAdd(code){
 const scanBar=`<div style="display:flex;gap:8px"><input id="bc" placeholder="Scan / type barcode" inputmode="numeric" onkeydown="if(event.key==='Enter'){if(scanAdd(this.value))setTimeout(()=>$('#bc')&&$('#bc').focus(),0)}"><button style="margin-bottom:8px;white-space:nowrap" onclick="openScan(scanAdd)">📷 Scan</button></div><small id="hint" style="display:block;color:var(--mu);margin:-2px 4px 8px"></small>`;
 
 /* ---------- checkout ---------- */
-function openCO(){if(!Object.keys(cart).length)return;payM='Cash';payBank=0;cashRcv=0;custName='';coRender();$('#co').style.display='flex'}
+function openCO(){if(!Object.keys(cart).length)return;payM='Cash';payBank=0;cashRcv=0;custName='';custPhone='';coRender();$('#co').style.display='flex'}
 function coRender(){
   const t=net();
-  let h=`<h3 style="margin:0 0 10px;color:var(--tx);font-size:20px">Total ${rs(t)}</h3><input placeholder="Customer name (optional)" value="${esc(custName)}" oninput="custName=this.value" style="margin-bottom:10px"><div class="acts" style="margin-bottom:10px">${['Cash','Card','QR'].map(m=>`<button class="${payM===m?'':'g'}" onclick="payM='${m}';coRender()">${m}</button>`).join('')}</div>`;
+  let h=`<h3 style="margin:0 0 10px;color:var(--tx);font-size:20px">Total ${rs(t)}</h3><input placeholder="Customer name (optional)" value="${esc(custName)}" oninput="custName=this.value" style="margin-bottom:8px"><input placeholder="Customer WhatsApp number (optional)" inputmode="tel" value="${esc(custPhone)}" oninput="custPhone=this.value" style="margin-bottom:10px"><div class="acts" style="margin-bottom:10px">${['Cash','Card','QR'].map(m=>`<button class="${payM===m?'':'g'}" onclick="payM='${m}';coRender()">${m}</button>`).join('')}</div>`;
   if(payM==='Cash')h+=`<input id="cr" type="number" inputmode="decimal" placeholder="Cash received (optional)" value="${cashRcv||''}" oninput="cashRcv=parseFloat(this.value)||0;$('#chg').textContent=rs(Math.max(0,cashRcv-net()))"><p style="margin:0 0 12px">Change: <b id="chg">${rs(Math.max(0,cashRcv-t))}</b></p>`;
   if(payM==='QR'){
     if(!qrs.length)h+='<p class="empty">Settings tab mein bank QR upload karein.</p>';
@@ -177,9 +177,9 @@ function coRender(){
 function charge(){
   const q=qrs.find(x=>x.id===payBank);
   const pay=payM==='QR'?'QR'+(q?' ('+q.bank+')':''):payM;
-  const lines=Object.entries(cart).map(([id,n])=>{const i=find(id);i.stock-=n;return{name:i.name,qty:n,price:i.price,cost:i.cost||0}});
+  const lines=Object.entries(cart).map(([id,n])=>{const i=find(id);i.stock-=n;return{id:i.id,name:i.name,qty:n,price:i.price,cost:i.cost||0}});
   const sub=lines.reduce((a,l)=>a+l.qty*l.price,0),d=discAmt();
-  const s={id:(sales.length?sales[sales.length-1].id:0)+1,date:Date.now(),sub,disc:d,total:sub-d,lines,pay,cust:custName.trim(),cash:payM==='Cash'?cashRcv:0};
+  const s={id:(sales.length?sales[sales.length-1].id:0)+1,date:Date.now(),sub,disc:d,total:sub-d,lines,pay,cust:custName.trim(),phone:custPhone.trim(),cash:payM==='Cash'?cashRcv:0};
   sales.push(s);cart={};discV=0;save();$('#co').style.display='none';render();showR(s);
 }
 
@@ -256,6 +256,8 @@ async function drawReceipt(s){
   x.fillStyle='#000';F('normal',22);
   const pm=(s.pay||'Cash')==='Cash'?('Paid by: Cash'+(s.cash>0?'   Received: '+fmt(s.cash)+'   Change: '+fmt(Math.max(0,s.cash-s.total)):'')):'Paid by: '+s.pay;
   T(pm,RW-M,y+4,'right');y+=36;
+  const rfT=(s.refunds||[]).reduce((a,r)=>a+r.amount,0);
+  if(rfT>0){F('bold',24);T('REFUNDED: '+fmt(rfT),RW-M,y-8,'right');y+=22}
   /* bottom: contact + QR payment */
   const by=y+8;
   if(IMG.wa)x.drawImage(IMG.wa,M+4,by+4,100,Math.round(100*IMG.wa.height/IMG.wa.width));
@@ -285,7 +287,9 @@ async function drawReceipt(s){
   x.fillStyle='#000';RR(292,my-30,248,60,30,true);
   x.fillStyle='#fff';F('bold',36,true);T('For any query',416,my+1,'center');
   y=my+50;
-  const wq=waCanvas(cfg.wa);
+  let wq=null;
+  if(cfg.waImg){const im=await loadImg(cfg.waImg);if(im){wq=document.createElement('canvas');wq.width=wq.height=300;const q2=wq.getContext('2d');q2.fillStyle='#fff';q2.fillRect(0,0,300,300);const k=Math.min(300/im.width,300/im.height);q2.drawImage(im,(300-im.width*k)/2,(300-im.height*k)/2,im.width*k,im.height*k)}}
+  if(!wq)wq=waCanvas(cfg.wa);
   if(wq){const sz=300;x.drawImage(wq,(RW-sz)/2,y,sz,sz);y+=sz+8;x.fillStyle='#000';F('bold',24);T('Scan to chat on WhatsApp',RW/2,y+10,'center');y+=34}
   y+=14;
   const out=document.createElement('canvas');out.width=RW;out.height=Math.ceil(y);
@@ -293,7 +297,7 @@ async function drawReceipt(s){
   return out;
 }
 async function showR(s){
-  cur=s;$('#mh').textContent='';$('#modal').style.display='flex';
+  cur=s;$('#mh').textContent='';$('#wph').value=s.phone||'';$('#rfbtn').style.display=owner?'':'none';$('#modal').style.display='flex';
   $('#rcv').innerHTML='<p class="empty">Receipt ban rahi hai…</p>';
   curCv=await drawReceipt(s);
   $('#rcv').innerHTML='<img src="'+curCv.toDataURL('image/png')+'" style="width:100%;background:#fff;border-radius:6px;margin-bottom:10px;display:block">';
@@ -354,6 +358,7 @@ async function btPrint(s){
 
 /* ---------- items ---------- */
 function addItem(){
+  if(!owner)return;
   const n=$('#n').value.trim();if(!n)return;
   const bc=$('#b').value.trim();
   if(bc&&items.some(i=>i.barcode===bc)){$('#n').placeholder='Ye barcode pehle se hai';$('#b').value='';return}
@@ -361,7 +366,7 @@ function addItem(){
   items.push({id,name:n,barcode:bc,cost:parseFloat($('#c').value)||0,price:parseFloat($('#p').value)||0,stock:parseInt($('#s').value)||0});
   items.sort((a,b)=>a.name.localeCompare(b.name));save();render();
 }
-function openEd(id){
+function openEd(id){if(!owner)return;
   const i=find(id);if(!i)return;
   $('#edb').innerHTML=`<h3 style="margin:0 0 10px;color:var(--tx);font-size:18px">Edit item</h3><input id="e_n" value="${esc(i.name)}" placeholder="Name"><div style="display:flex;gap:8px"><input id="e_b" value="${esc(i.barcode||'')}" placeholder="Barcode" inputmode="numeric"><button class="g" style="margin-bottom:8px" onclick="openScan(c=>{beep(true);$('#e_b').value=c;closeScan()})">📷</button></div><input id="e_c" type="number" inputmode="decimal" value="${i.cost||0}" placeholder="Purchase price (kharid)"><div class="grid"><input id="e_p" type="number" inputmode="decimal" value="${i.price}" placeholder="Sale price"><input id="e_s" type="number" inputmode="numeric" value="${i.stock}" placeholder="Stock"></div><div class="acts"><button class="g" onclick="$('#ed').style.display='none'">Cancel</button><button onclick="saveEd(${id})">Save</button></div>`;
   $('#ed').style.display='flex';
@@ -374,10 +379,76 @@ function saveEd(id){
   if(cart[id]>i.stock){if(i.stock>0)cart[id]=i.stock;else delete cart[id]}
   items.sort((a,b)=>a.name.localeCompare(b.name));save();$('#ed').style.display='none';render();
 }
-function restock(id){find(id).stock+=10;save();render()}
-function del(id){
+function restock(id){if(!owner)return;find(id).stock+=10;save();render()}
+function del(id){if(!owner)return;
   if(delId!==id){delId=id;render();return}
   items=items.filter(i=>i.id!==id);delete cart[id];delId=null;save();render();
+}
+function askPin(){
+  $('#pinb').innerHTML=`<h3 style="margin:0 0 10px;color:var(--tx);font-size:18px">Owner PIN</h3><input id="pin" type="password" inputmode="numeric" placeholder="PIN likhein" onkeydown="if(event.key==='Enter')tryPin()"><p id="pinm" style="color:var(--warn);margin:0 0 8px;min-height:20px"></p><div class="acts"><button class="g" onclick="$('#pn').style.display='none'">Cancel</button><button onclick="tryPin()">Unlock</button></div>`;
+  $('#pn').style.display='flex';setTimeout(()=>$('#pin').focus(),50);
+}
+function tryPin(){
+  if($('#pin').value===String(cfg.pin)){owner=true;$('#pn').style.display='none';render()}
+  else{$('#pinm').textContent='Ghalat PIN';$('#pin').value=''}
+}
+function lockApp(){owner=false;tab='sale';closeM();render()}
+function setPin(){
+  const v=$('#np').value.trim();
+  if(!/^\d{4,6}$/.test(v)){$('#npm').textContent='4 se 6 ginti ka PIN likhein';return}
+  cfg.pin=v;S.set('cfg',cfg);render();
+  setTimeout(()=>{const m=$('#npm');if(m)m.textContent='PIN set ho gaya. Neeche Lock dabayein, phir staff sirf Sale kar sakega.'},0);
+}
+function waNum(n){let d=String(n||'').replace(/\D/g,'');if(!d)return '';if(d.startsWith('00'))d=d.slice(2);else if(d.startsWith('0'))d='92'+d.slice(1);return d}
+function dstr(t){const d=new Date(t),p=n=>String(n).padStart(2,'0');return p(d.getDate())+'-'+p(d.getMonth()+1)+'-'+d.getFullYear()+' '+p(d.getHours())+':'+p(d.getMinutes())}
+function rtextWA(s){
+  const f=n=>Math.round(n).toLocaleString('en-US');
+  return ['*Al-Amin Mobile Accessories*','Receipt No: '+String(s.id).padStart(4,'0'),'Date: '+dstr(s.date),s.cust?'Customer: '+s.cust:null,'------------------',
+    ...s.lines.map(l=>l.qty+' x '+l.name+' = '+f(l.qty*l.price)),'------------------',
+    'Sub Total: '+f(s.sub),'Discount: '+f(s.disc||0),'*Total: Rs '+f(s.total)+'*','Paid by: '+(s.pay||'Cash'),'',
+    cfg.addr,'Call/WhatsApp: '+[cfg.tel,cfg.tel2].filter(Boolean).join(' / '),'Shukriya!'].filter(x=>x!==null).join('\n');
+}
+function sendWA(s){
+  if(!s)return;
+  const v=$('#wph').value.trim();if(v){s.phone=v;save()}
+  const n=waNum(s.phone),u='https://wa.me/'+n+'?text='+encodeURIComponent(rtextWA(s));
+  if(!n)msg('Number nahi likha, WhatsApp mein contact chun lein.');
+  if(!window.open(u,'_blank'))location.href=u;
+}
+function refundedQty(s,i){return (s.refunds||[]).reduce((a,r)=>{const l=r.lines.find(x=>x.i===i);return a+(l?l.qty:0)},0)}
+let rfQ=[];
+function rfAmt(){const s=cur,k=s.sub>0?s.total/s.sub:1;return Math.round(s.lines.reduce((a,l,i)=>a+rfQ[i]*l.price,0)*k)}
+function openRf(){if(!cur||!owner)return;rfQ=cur.lines.map(()=>0);rfRender();$('#rf').style.display='flex'}
+function rfRender(){
+  const s=cur;
+  let h=`<h3 style="margin:0 0 10px;color:var(--tx);font-size:18px">Refund · Receipt #${String(s.id).padStart(4,'0')}</h3>`;
+  s.lines.forEach((l,i)=>{
+    const max=l.qty-refundedQty(s,i);
+    h+=`<div class="row"><div><b>${esc(l.name)}</b><small>${rs(l.price)} · wapas ho sakte: ${max}</small></div>${max>0?`<div class="qty"><button onclick="rfStep(${i},-1)">−</button><b>${rfQ[i]}</b><button onclick="rfStep(${i},1)">+</button></div>`:'<small>Refund ho chuka</small>'}</div>`;
+  });
+  h+=`<p style="margin:10px 2px">Refund amount: <b>${rs(rfAmt())}</b></p><div class="acts"><button class="g" onclick="$('#rf').style.display='none'">Cancel</button><button onclick="doRefund()">Confirm refund</button></div>`;
+  $('#rfb').innerHTML=h;
+}
+function rfStep(i,d){const max=cur.lines[i].qty-refundedQty(cur,i);rfQ[i]=Math.max(0,Math.min(max,rfQ[i]+d));rfRender()}
+function doRefund(){
+  const s=cur,lines=[];
+  s.lines.forEach((l,i)=>{if(rfQ[i]>0){lines.push({i,qty:rfQ[i],price:l.price,cost:l.cost||0});const it=l.id?find(l.id):items.find(x=>x.name===l.name);if(it)it.stock+=rfQ[i]}});
+  if(!lines.length)return;
+  const amount=rfAmt();
+  s.refunds=(s.refunds||[]).concat([{date:Date.now(),lines,amount}]);
+  save();$('#rf').style.display='none';render();showR(s);msg('Refund ho gaya: '+rs(amount)+'. Stock wapas add ho gaya.');
+}
+function openNo(){const s=sales.find(x=>x.id==$('#rno').value);if(s)showR(s);else{$('#rno').value='';$('#rno').placeholder='Nahi mila'}}
+function addWaQR(inp){
+  const f=inp.files[0];inp.value='';if(!f)return;
+  const img=new Image(),u=URL.createObjectURL(f);
+  img.onload=()=>{
+    const k=Math.min(1,600/Math.max(img.width,img.height)),c=document.createElement('canvas');
+    c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);
+    const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(img,0,0,c.width,c.height);
+    cfg.waImg=c.toDataURL('image/jpeg',.9);URL.revokeObjectURL(u);S.set('cfg',cfg);render();
+  };
+  img.src=u;
 }
 function addQR(inp){
   const f=inp.files[0],bank=$('#qn').value.trim();inp.value='';
@@ -407,30 +478,36 @@ function vItems(){
 function vReport(){
   const today=new Date().toDateString();
   const ts=sales.filter(s=>new Date(s.date).toDateString()===today);
-  const sum=ts.reduce((a,s)=>a+s.total,0);
-  const prof=ts.reduce((a,s)=>a+s.total-s.lines.reduce((b,l)=>b+l.qty*(l.cost||0),0),0);
+  const rfs=[];sales.forEach(s=>(s.refunds||[]).forEach(r=>{if(new Date(r.date).toDateString()===today)rfs.push(r)}));
+  const rfA=rfs.reduce((a,r)=>a+r.amount,0),rfP=rfs.reduce((a,r)=>a+r.amount-r.lines.reduce((b,l)=>b+l.qty*l.cost,0),0);
+  const sum=ts.reduce((a,s)=>a+s.total,0)-rfA;
+  const prof=ts.reduce((a,s)=>a+s.total-s.lines.reduce((b,l)=>b+l.qty*(l.cost||0),0),0)-rfP;
   const top={};ts.forEach(s=>s.lines.forEach(l=>top[l.name]=(top[l.name]||0)+l.qty));
   const tl=Object.entries(top).sort((a,b)=>b[1]-a[1]).slice(0,5);
   const low=items.filter(i=>i.stock<=5);
-  return `<div class="grid"><div class="card"><small>Today’s sales</small><div class="big">${rs(sum)}</div></div><div class="card"><small>Orders</small><div class="big">${ts.length}</div></div></div><div class="card"><small>Profit (munafa)</small><div class="big">${rs(prof)}</div></div>
+  return `<div class="grid"><div class="card"><small>Today’s sales</small><div class="big">${rs(sum)}</div></div><div class="card"><small>Orders</small><div class="big">${ts.length}</div></div></div><div class="card"><small>Profit (munafa)</small><div class="big">${rs(prof)}</div></div>${rfA>0?`<div class="card"><small>Refunds today</small><div class="big">-${rs(rfA)}</div></div>`:''}
   <h3>TOP ITEMS TODAY</h3>${tl.length?tl.map(([n,q])=>`<div class="row"><b>${esc(n)}</b><span>${q} sold</span></div>`).join(''):'<p class="empty">Aaj koi sale nahi.</p>'}
   <h3>LOW STOCK</h3>${low.length?low.map(i=>`<div class="row"><b>${esc(i.name)}</b><span class="low">${i.stock} left</span></div>`).join(''):'<p class="empty">Sab theek hai.</p>'}
-  <h3>TODAY’S RECEIPTS</h3>${ts.slice().reverse().map(s=>`<div class="row" onclick="showR(sales.find(x=>x.id==${s.id}))"><div><b>#${s.id}</b><small>${new Date(s.date).toLocaleTimeString()} · ${esc(s.pay||'Cash')}</small></div><b>${rs(s.total)}</b></div>`).join('')}`;
+  <h3>RECEIPT KHOLEIN (purani bhi)</h3><div style="display:flex;gap:8px"><input id="rno" type="number" inputmode="numeric" placeholder="Receipt No"><button style="margin-bottom:8px" onclick="openNo()">Kholein</button></div><h3>TODAY’S RECEIPTS</h3>${ts.slice().reverse().map(s=>`<div class="row" onclick="showR(sales.find(x=>x.id==${s.id}))"><div><b>#${s.id}</b><small>${new Date(s.date).toLocaleTimeString()} · ${esc(s.pay||'Cash')}${(s.refunds||[]).length?' · Refund':''}</small></div><b>${rs(s.total)}</b></div>`).join('')}`;
 }
 function vSet(){
   const f=(k,p,t)=>`<input placeholder="${p}" value="${esc(cfg[k]||'')}" ${t||''} oninput="cfg.${k}=this.value;S.set('cfg',cfg)">`;
-  return `<div class="card"><h3 style="margin:0 0 8px">Receipt details</h3>${f('addr','Address')}${f('tel','Phone / WhatsApp 1','inputmode="tel"')}${f('tel2','Phone 2','inputmode="tel"')}${f('wa','WhatsApp number for QR (jaise 923044260261)','inputmode="numeric"')}<small style="display:block;color:var(--mu);margin:0 2px 8px">Receipt paper: 58mm (57mm roll)</small><select onchange="cfg.rq=+this.value;S.set('cfg',cfg)"><option value="0">QR Payment: koi nahi</option>${qrs.map(q=>`<option value="${q.id}" ${cfg.rq==q.id?'selected':''}>QR Payment: ${esc(q.bank)}</option>`).join('')}</select></div>
+  return `<div class="card"><h3 style="margin:0 0 8px">Owner PIN</h3><small style="display:block;color:var(--mu);margin-bottom:8px">${cfg.pin?'PIN laga hua hai. Staff sirf Sale kar sakta hai.':'PIN lagayein: phir staff sirf Sale kar sakega, edit, report aur refund sirf owner.'}</small><input id="np" type="password" inputmode="numeric" placeholder="${cfg.pin?'Naya PIN (4-6 ginti)':'PIN (4-6 ginti)'}"><button style="width:100%" onclick="setPin()">${cfg.pin?'PIN badlein':'PIN set karein'}</button><small id="npm" style="display:block;color:var(--mu);margin-top:6px"></small>${cfg.pin?'<button class="g" style="width:100%;margin-top:8px" onclick="cfg.pin=\'\';S.set(\'cfg\',cfg);render()">PIN hatayein</button>':''}</div>
+  <div class="card"><h3 style="margin:0 0 8px">Receipt details</h3>${f('addr','Address')}${f('tel','Phone / WhatsApp 1','inputmode="tel"')}${f('tel2','Phone 2','inputmode="tel"')}${f('wa','WhatsApp number for QR (jaise 923044260261)','inputmode="numeric"')}<small style="display:block;color:var(--mu);margin:0 2px 8px">Receipt paper: 58mm (57mm roll)</small><select onchange="cfg.rq=+this.value;S.set('cfg',cfg)"><option value="0">QR Payment: koi nahi</option>${qrs.map(q=>`<option value="${q.id}" ${cfg.rq==q.id?'selected':''}>QR Payment: ${esc(q.bank)}</option>`).join('')}</select></div>
+  <div class="card"><h3 style="margin:0 0 8px">WhatsApp QR (For any query)</h3><input id="wf" type="file" accept="image/*" hidden onchange="addWaQR(this)"><button style="width:100%" onclick="$('#wf').click()">Upload WhatsApp QR image</button><small style="display:block;color:var(--mu);margin:6px 0">Upload na karein to number se khud QR banega.</small>${cfg.waImg?`<div class="row"><div style="display:flex;gap:10px;align-items:center"><img src="${cfg.waImg}" style="width:48px;height:48px;border-radius:6px"><b>Uploaded QR</b></div><button class="g" onclick="cfg.waImg='';S.set('cfg',cfg);render()">Delete</button></div>`:''}</div>
   <div class="card"><h3 style="margin:0 0 8px">Bank QR (scan to pay)</h3><input id="qn" placeholder="Bank ka naam (jaise HBL, Easypaisa)"><input id="qf" type="file" accept="image/*" hidden onchange="addQR(this)"><button style="width:100%" onclick="$('#qf').click()">Upload QR image</button><small id="qh" style="display:block;color:var(--mu);margin-top:6px"></small>
   ${qrs.map(q=>`<div class="row" style="margin-top:8px"><div style="display:flex;gap:10px;align-items:center"><img src="${q.img}" style="width:48px;height:48px;border-radius:6px"><b>${esc(q.bank)}</b></div><button class="g" onclick="qrs=qrs.filter(x=>x.id!==${q.id});S.set('qrs',qrs);render()">Delete</button></div>`).join('')}</div>`;
 }
 
 function render(){
+  if(!owner)tab='sale';
   $('#title').textContent={sale:'Sale',items:'Items',report:'Daily report',set:'Settings'}[tab];
   $('#view').innerHTML=(tab==='sale'&&items.length?scanBar:'')+{sale:vSale,items:vItems,report:vReport,set:vSet}[tab]();
   const t=total();
   $('#bar').innerHTML=tab==='sale'?`<div style="display:flex;gap:8px;margin-bottom:6px"><input id="dv" type="number" inputmode="decimal" placeholder="Discount (jitna chahein)" value="${discV||''}" oninput="discV=parseFloat(this.value)||0;updBar()"><select onchange="discT=this.value;updBar()"><option ${discT==='Rs'?'selected':''}>Rs</option><option ${discT==='%'?'selected':''}>%</option></select></div><small id="dl" style="display:block;color:var(--mu);margin-bottom:6px"></small><button id="cb" ${t?'':'disabled'} onclick="openCO()">Charge ${rs(net())}</button>`:'';
   updBar();
-  $('#nav').innerHTML=[['sale','🛒','Sale'],['items','📦','Items'],['report','📊','Report'],['set','⚙️','Settings']].map(([k,e,l])=>`<button class="${tab===k?'on':''}" onclick="tab='${k}';delId=null;render()">${e}<br>${l}</button>`).join('');
+  const tabs=owner?[['sale','🛒','Sale'],['items','📦','Items'],['report','📊','Report'],['set','⚙️','Settings']]:[['sale','🛒','Sale']];
+  $('#nav').innerHTML=tabs.map(([k,e,l])=>`<button class="${tab===k?'on':''}" onclick="tab='${k}';delId=null;render()">${e}<br>${l}</button>`).join('')+(cfg.pin?(owner?'<button onclick="lockApp()">🔓<br>Lock</button>':'<button onclick="askPin()">🔒<br>Owner</button>'):'');
 }
 render();
 try{if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{})}catch(e){}
