@@ -469,10 +469,21 @@ async function cloudUp(){
     setTimeout(()=>{const m2=$('#fm');if(m2)m2.textContent='Upload ho gaya. Sync chalu hai.'},50);
   }catch(e){const m3=$('#fm');if(m3)m3.textContent='Upload nahi hua: '+(e.code==='timeout'?'Server se jawab nahi aaya. Internet check karke dobara dabayein.':(e.code||e.message))}
 }
+async function cloudTest(){
+  const m=$('#fm'),say=t=>{if(m)m.textContent=t};
+  const T=(pr,ms)=>Promise.race([pr,new Promise((_,rj)=>setTimeout(()=>rj({code:'timeout'}),ms))]);
+  say('Test 1/3: internet…');
+  try{await T(fetch('https://www.gstatic.com/generate_204',{mode:'no-cors'}),8000)}catch(e){say('Test 1 fail: Google tak internet nahi pahunch raha.');return}
+  say('Test 2/3: Firestore server tak raasta…');
+  try{await T(fetch('https://firestore.googleapis.com/',{mode:'no-cors'}),10000)}catch(e){say('Test 2 fail: firestore.googleapis.com is network par band lagta hai. WiFi/mobile data badal kar, VPN ya Private DNS band karke dekhein.');return}
+  say('Test 3/3: database mein likhne ki koshish…');
+  try{await T(FB.db.collection('meta').doc('ping').set({t:Date.now()}),20000);say('Sab theek: database mein likh diya gaya. Ab upload dabayein.')}
+  catch(e){say('Test 3 fail: '+(e.code||'')+' '+(e.message||'').slice(0,120))}
+}
 function cloudUI(){
   if(!window.firebase)return '<small style="color:var(--mu)">Cloud ke liye internet chahiye. Page refresh karke dekhein.</small>';
   if(!FB.user)return '<input id="fe" type="email" placeholder="Shop email" value="alamin@gmail.com"><input id="fp" type="password" placeholder="Password"><button style="width:100%" onclick="fbLogin()">Login</button><small id="fm" style="display:block;color:var(--mu);margin-top:6px"></small>';
-  return '<small style="display:block;color:var(--mu);margin-bottom:8px">Login: '+esc(FB.user.email)+' · Sync: <b>'+(cloudOn?'chalu':'band')+'</b></small><button style="width:100%;margin-bottom:8px" onclick="cloudUp()">Is phone ka data cloud par upload karein (pehli dafa, sirf main phone)</button><button class="g" style="width:100%;margin-bottom:8px" onclick="setCloud(true)">Cloud ka data is phone par lein (nayi phone, is phone ka purana data hat jayega)</button><small id="fm" style="display:block;color:var(--mu);margin-bottom:8px"></small><button class="g" style="width:100%" onclick="fbLogout()">Logout / sync band</button>';
+  return '<small style="display:block;color:var(--mu);margin-bottom:8px">Login: '+esc(FB.user.email)+' · Sync: <b>'+(cloudOn?'chalu':'band')+'</b></small><button style="width:100%;margin-bottom:8px" onclick="cloudUp()">Is phone ka data cloud par upload karein (pehli dafa, sirf main phone)</button><button class="g" style="width:100%;margin-bottom:8px" onclick="setCloud(true)">Cloud ka data is phone par lein (nayi phone, is phone ka purana data hat jayega)</button><small id="fm" style="display:block;color:var(--mu);margin-bottom:8px"></small><button class="g" style="width:100%;margin-bottom:8px" onclick="cloudTest()">Connection test (masla dhoondne ke liye)</button><button class="g" style="width:100%" onclick="fbLogout()">Logout / sync band</button>';
 }
 function waNum(n){let d=String(n||'').replace(/\D/g,'');if(!d)return '';if(d.startsWith('00'))d=d.slice(2);else if(d.startsWith('0'))d='92'+d.slice(1);return d}
 function dstr(t){const d=new Date(t),p=n=>String(n).padStart(2,'0');return p(d.getDate())+'-'+p(d.getMonth()+1)+'-'+d.getFullYear()+' '+p(d.getHours())+':'+p(d.getMinutes())}
