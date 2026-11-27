@@ -412,7 +412,7 @@ const nextNo=()=>Math.max(cfg.lastNo||0,sales.reduce((m,x)=>Math.max(m,x.id),0))
 function fbInit(){
   if(!window.firebase)return;
   try{
-    firebase.initializeApp(FBCFG);FB.auth=firebase.auth();FB.db=firebase.firestore();
+    firebase.initializeApp(FBCFG);FB.auth=firebase.auth();FB.db=firebase.firestore();try{FB.db.settings({experimentalForceLongPolling:true,merge:true})}catch(e){}
     FB.db.enablePersistence({synchronizeTabs:true}).catch(()=>{});
     FB.auth.onAuthStateChanged(u=>{FB.user=u;if(u&&cloudOn)startSync();else stopSync();render()});
   }catch(e){}
@@ -464,10 +464,10 @@ async function cloudUp(){
     sales.forEach(s=>{s.key=s.key||newKey();ops.push([d.collection('sales').doc(s.key),s])});
     qrs.forEach(q=>ops.push([d.collection('qrs').doc(String(q.id)),q]));
     ops.push([d.doc('meta/cfg'),cfg]);
-    for(let i=0;i<ops.length;i+=400){const b=d.batch();ops.slice(i,i+400).forEach(([r,v])=>b.set(r,clone(v)));await b.commit()}
+    for(let i=0;i<ops.length;i+=400){const b=d.batch();ops.slice(i,i+400).forEach(([r,v])=>b.set(r,clone(v)));await Promise.race([b.commit(),new Promise((_,rj)=>setTimeout(()=>rj({code:'timeout'}),25000))])}
     S.set('sales',sales);setCloud(true);
     setTimeout(()=>{const m2=$('#fm');if(m2)m2.textContent='Upload ho gaya. Sync chalu hai.'},50);
-  }catch(e){const m3=$('#fm');if(m3)m3.textContent='Upload nahi hua: '+(e.code||e.message)}
+  }catch(e){const m3=$('#fm');if(m3)m3.textContent='Upload nahi hua: '+(e.code==='timeout'?'Server se jawab nahi aaya. Internet check karke dobara dabayein.':(e.code||e.message))}
 }
 function cloudUI(){
   if(!window.firebase)return '<small style="color:var(--mu)">Cloud ke liye internet chahiye. Page refresh karke dekhein.</small>';
